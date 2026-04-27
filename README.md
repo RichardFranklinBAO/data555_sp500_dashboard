@@ -5,7 +5,7 @@ performance statistics across 505 S&P 500 constituent stocks.
 
 ## Live Dashboard
 
-[View the dashboard here](https://RichardFranklinBAO.github.io/sp500-dashboard/Final_Project_3a_flex.html)
+[View the dashboard here]([https://RichardFranklinBAO.github.io/sp500-dashboard/Final_Project_3a_flex.html](https://richardfranklinbao.github.io/data555_sp500_dashboard/Final_Project_3a_flex.html))
 
 ## Data Source
 
