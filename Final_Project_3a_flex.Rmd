@@ -1,0 +1,276 @@
+---
+title: "S&P 500 Stock Data Explorer (2013–2018)"
+author: "Franklin"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: flatly
+    navbar:
+      - { title: "GitHub Repository", href: "https://github.com/RichardFranklinBAO/data555_sp500_dashboard.git", align: right, icon: fa-github }
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(flexdashboard)
+library(dplyr)
+library(plotly)
+library(DT)
+library(lubridate)
+library(here)
+library(htmlwidgets)
+library(jsonlite)
+```
+
+```{r load-data}
+# Load the S&P 500 five-year stock data
+# all_stocks_5yr.csv should be in raw_data/ relative to this Rmd
+here::i_am("Final_Project_3a_flex.Rmd")
+stocks <- read.csv(here::here("raw_data/all_stocks_5yr.csv"), stringsAsFactors = FALSE)
+
+# Parse date column
+stocks$date <- as.Date(stocks$date)
+
+# Remove rows with missing close or volume
+stocks <- stocks %>% filter(!is.na(close), !is.na(volume))
+```
+
+# Dashboard
+
+## Column {data-width=550}
+
+### Interactive Stock Price Explorer
+
+```{r widget1-interactive-line-chart}
+# Get sorted list of all stock tickers
+all_tickers <- sort(unique(stocks$Name))
+
+# Pre-compute per-ticker data as a named list (serialized to JSON for JS)
+# Each element: list of date strings, close prices, and volumes
+ticker_data <- lapply(all_tickers, function(tk) {
+  df <- stocks %>%
+    filter(Name == tk) %>%
+    arrange(date)
+  list(
+    dates   = format(df$date, "%Y-%m-%d"),
+    close   = round(df$close, 2),
+    volume  = df$volume
+  )
+})
+names(ticker_data) <- all_tickers
+
+# Initial ticker to display on load
+init_ticker <- all_tickers[1]
+init_data   <- ticker_data[[init_ticker]]
+
+# Build base plotly figure using initial ticker data only
+# JS will swap data on dropdown change (avoids embedding 505 traces)
+fig <- plot_ly(
+  x          = init_data$dates,
+  y          = init_data$close,
+  customdata = init_data$volume,
+  type       = "scatter",
+  mode       = "lines",
+  name       = init_ticker,
+  line       = list(color = "#1f77b4", width = 1.8),
+  hovertemplate = paste0(
+    "<b>%{meta}</b><br>",
+    "Date: %{x}<br>",
+    "Closing Price: $%{y:.2f}<br>",
+    "Volume: %{customdata:,} shares<extra></extra>"
+  ),
+  meta = init_ticker
+) %>%
+  layout(
+    title = list(
+      text = "S&P 500 Daily Closing Price (2013\u20132018)",
+      font = list(size = 16, color = "#1a1a2e")
+    ),
+    xaxis = list(
+      title       = "Date",
+      showgrid    = TRUE,
+      gridcolor   = "#e8e8e8",
+      rangeslider = list(visible = TRUE, thickness = 0.06)
+    ),
+    yaxis = list(
+      title      = "Closing Price (USD)",
+      showgrid   = TRUE,
+      gridcolor  = "#e8e8e8",
+      tickprefix = "$"
+    ),
+    hovermode     = "x unified",
+    margin        = list(t = 60, b = 60),
+    plot_bgcolor  = "#fafafa",
+    paper_bgcolor = "#ffffff",
+    font = list(family = "Arial, sans-serif", size = 13)
+  )
+
+# Inject full ticker dataset and a <select> dropdown via onRender
+ticker_json <- toJSON(ticker_data, auto_unbox = TRUE)
+
+fig <- fig %>%
+  onRender(
+    sprintf(
+      "
+      function(el, x) {
+        var allData = %s;
+        var tickers = Object.keys(allData).sort();
+
+        // Build the dropdown UI above the chart
+        var container = document.createElement('div');
+        container.style.cssText = 'margin-bottom:8px; font-family: Arial, sans-serif;';
+
+        var label = document.createElement('label');
+        label.textContent = 'Select Stock Ticker: ';
+        label.style.cssText = 'font-size:14px; font-weight:bold; color:#2c3e50; margin-right:6px;';
+
+        var sel = document.createElement('select');
+        sel.style.cssText = 'font-size:13px; padding:4px 8px; border-radius:4px; border:1px solid #aaa; background:#f9f9f9; cursor:pointer;';
+
+        tickers.forEach(function(tk) {
+          var opt = document.createElement('option');
+          opt.value = tk;
+          opt.textContent = tk;
+          if (tk === '%s') opt.selected = true;
+          sel.appendChild(opt);
+        });
+
+        container.appendChild(label);
+        container.appendChild(sel);
+        el.parentNode.insertBefore(container, el);
+
+        // Update chart when dropdown selection changes
+        sel.addEventListener('change', function() {
+          var tk  = this.value;
+          var d   = allData[tk];
+          Plotly.restyle(el, {
+            x:          [d.dates],
+            y:          [d.close],
+            customdata: [d.volume],
+            meta:       [tk],
+            name:       [tk]
+          }, [0]);
+          // Reset axes so full series is visible after ticker change
+          Plotly.relayout(el, {'xaxis.autorange': true, 'yaxis.autorange': true});
+        });
+      }
+      ",
+      ticker_json,
+      init_ticker
+    )
+  )
+
+fig
+```
+
+> Use the dropdown to select any of the 505 S&P 500 stocks. Hover for exact date, closing price, and volume. Use the range slider or drag to zoom into any time window.
+
+## Column {data-width=450}
+
+### S&P 500 Five-Year Performance Summary
+
+```{r widget2-summary-table}
+# Compute per-stock summary statistics across the full five-year period
+summary_stats <- stocks %>%
+  group_by(Name) %>%
+  arrange(date) %>%
+  summarise(
+    Start_Date         = format(min(date), "%Y-%m-%d"),
+    End_Date           = format(max(date), "%Y-%m-%d"),
+    Start_Price_USD    = round(first(close), 2),
+    End_Price_USD      = round(last(close), 2),
+    Total_Return_Pct   = round((last(close) - first(close)) / first(close) * 100, 2),
+    Annualized_Vol_Pct = round(
+      sd(diff(log(close)), na.rm = TRUE) * sqrt(252) * 100, 2
+    ),
+    Max_Close_USD      = round(max(close, na.rm = TRUE), 2),
+    Min_Close_USD      = round(min(close, na.rm = TRUE), 2),
+    Avg_Daily_Volume   = round(mean(volume, na.rm = TRUE) / 1e6, 2),
+    Trading_Days       = n(),
+    .groups = "drop"
+  ) %>%
+  rename(
+    Ticker                        = Name,
+    `Start Date`                  = Start_Date,
+    `End Date`                    = End_Date,
+    `Start Price ($)`             = Start_Price_USD,
+    `End Price ($)`               = End_Price_USD,
+    `Total Return (%)`            = Total_Return_Pct,
+    `Annualized Volatility (%)`   = Annualized_Vol_Pct,
+    `Max Close ($)`               = Max_Close_USD,
+    `Min Close ($)`               = Min_Close_USD,
+    `Avg Daily Volume (M shares)` = Avg_Daily_Volume,
+    `Trading Days`                = Trading_Days
+  )
+
+# Render interactive DT table with search, sort, and export
+datatable(
+  summary_stats,
+  rownames   = FALSE,
+  filter     = "top",
+  extensions = c("Buttons", "Scroller"),
+  options = list(
+    dom        = "Bfrtip",
+    buttons    = c("csv", "excel"),
+    pageLength = 20,
+    scrollX    = TRUE,
+    scrollY    = "380px",
+    scroller   = TRUE,
+    autoWidth  = TRUE,
+    columnDefs = list(
+      list(className = "dt-center", targets = "_all")
+    ),
+    initComplete = JS(
+      "function(settings, json) {",
+      "  $(this.api().table().header()).css({'background-color': '#2c3e50', 'color': '#ffffff'});",
+      "}"
+    )
+  ),
+  caption = htmltools::tags$caption(
+    style = "caption-side: top; text-align: left; font-size: 13px; color: #555;",
+    "Table 1: S&P 500 Five-Year Performance Summary (2013-2018). ",
+    "All price figures in USD. Annualized volatility computed from daily log returns scaled by sqrt(252)."
+  )
+) %>%
+  formatStyle(
+    "Total Return (%)",
+    background = styleInterval(
+      c(-50, 0, 100, 300),
+      c("#f8d7da", "#ffe5d0", "#d4edda", "#a8d5b5", "#5aab7a")
+    ),
+    fontWeight = "bold"
+  ) %>%
+  formatStyle(
+    "Annualized Volatility (%)",
+    background = styleInterval(
+      c(20, 40, 60),
+      c("#d4edda", "#fff3cd", "#ffd4a3", "#f8d7da")
+    )
+  )
+```
+
+> Click any column header to sort. Use the search boxes to filter. Export to CSV or Excel using the buttons above the table.
+
+---
+
+**Individual stock performance within the S&P 500 varies far more than index-level returns suggest, and identifying high-volatility or underperforming names early has direct implications for portfolio risk management. This dashboard enables investors, analysts, and researchers to quickly explore five years of price history and comparative performance metrics without requiring any coding expertise.**
+
+# About Data
+
+## Column
+
+### Dataset Description
+
+This dashboard uses the S&P 500 Stock Data dataset sourced from Kaggle
+([https://www.kaggle.com/datasets/camnugent/sandp500](https://www.kaggle.com/datasets/camnugent/sandp500)).
+The dataset contains approximately 619,040 daily trading records covering 505 S&P 500
+constituent stocks. Data was collected via automated scraping of historical daily
+open, high, low, close, and volume records from public financial data providers.
+The study population consists of all U.S. equities that were S&P 500 index
+constituents at any point between February 2013 and February 2018.
+All records represent individual trading day observations within that five-year window,
+with no missing dates imputed.
+
+---
+
+**Individual stock performance within the S&P 500 varies far more than index-level returns suggest, and identifying high-volatility or underperforming names early has direct implications for portfolio risk management. This dashboard enables investors, analysts, and researchers to quickly explore five years of price history and comparative performance metrics without requiring any coding expertise.**
