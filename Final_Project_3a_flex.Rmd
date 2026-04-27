@@ -3,8 +3,8 @@ title: "S&P 500 Stock Data Explorer (2013–2018)"
 author: "Franklin"
 output:
   flexdashboard::flex_dashboard:
-    orientation: columns
-    vertical_layout: fill
+    orientation: rows
+    vertical_layout: scroll
     theme: flatly
     navbar:
       - { title: "GitHub Repository", href: "https://github.com/RichardFranklinBAO/data555_sp500_dashboard.git", align: right, icon: fa-github }
@@ -37,7 +37,7 @@ stocks <- stocks %>% filter(!is.na(close), !is.na(volume))
 
 # Dashboard
 
-## Column {data-width=550}
+## Row {data-height=600}
 
 ### Interactive Stock Price Explorer
 
@@ -165,8 +165,6 @@ fig
 
 > Use the dropdown to select any of the 505 S&P 500 stocks. Hover for exact date, closing price, and volume. Use the range slider or drag to zoom into any time window.
 
-## Column {data-width=450}
-
 ### S&P 500 Five-Year Performance Summary
 
 ```{r widget2-summary-table}
@@ -251,9 +249,11 @@ datatable(
 
 > Click any column header to sort. Use the search boxes to filter. Export to CSV or Excel using the buttons above the table.
 
----
+## Row {data-height=100}
 
-**Individual stock performance within the S&P 500 varies far more than index-level returns suggest, and identifying high-volatility or underperforming names early has direct implications for portfolio risk management. This dashboard enables investors, analysts, and researchers to quickly explore five years of price history and comparative performance metrics without requiring any coding expertise.**
+### Why This Dashboard Matters
+
+Individual stock performance within the S&P 500 varies far more than index-level returns suggest, and identifying high-volatility or underperforming names early has direct implications for portfolio risk management. This dashboard enables investors, analysts, and researchers to quickly explore five years of price history and comparative performance metrics without requiring any coding expertise.
 
 # About Data
 
